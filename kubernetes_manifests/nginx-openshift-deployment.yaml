@@ -1,0 +1,154 @@
+# ============================================================================
+# nginx-demo - OpenShift Deployment
+# ============================================================================
+# OpenShift differences from EKS:
+#   - Uses Route (not Ingress/LoadBalancer) for external access
+#   - Runs as non-root (OpenShift SCC default)
+#   - No hostPort or privileged containers
+#   - Route created automatically by OpenShift ingress controller
+# ============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-demo-config
+  namespace: default
+data:
+  default.conf: |
+    server {
+        listen 8080;
+        server_name _;
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+        }
+
+        location /health {
+            return 200 'healthy\n';
+            add_header Content-Type text/plain;
+        }
+    }
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>CloudLens OpenShift Visibility Lab</title>
+      <style>
+        body { font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; text-align: center; padding: 50px; }
+        h1 { color: #00d4ff; font-size: 2.5em; }
+        .card { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 30px; max-width: 600px; margin: 30px auto; border: 1px solid rgba(0,212,255,0.3); }
+        .status { color: #00ff88; font-weight: bold; }
+        .platform { color: #ff6b6b; }
+      </style>
+    </head>
+    <body>
+      <h1>CloudLens K8s Visibility Lab</h1>
+      <div class="card">
+        <p><strong>Platform:</strong> <span class="platform">Red Hat OpenShift (ROSA)</span></p>
+        <p><strong>Status:</strong> <span class="status">Active &amp; Monitored</span></p>
+        <p>CyPerf traffic generator is sending simulated application traffic (Netflix, YouTube, Discord, ChatGPT) through this service. CloudLens sensors capture this traffic for visibility.</p>
+      </div>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-demo
+  namespace: default
+  labels:
+    app: nginx-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-demo
+  template:
+    metadata:
+      labels:
+        app: nginx-demo
+    spec:
+      # OpenShift: runs as non-root automatically via SCC
+      containers:
+      - name: nginx
+        # Use bitnami/nginx which runs as non-root (port 8080)
+        image: bitnami/nginx:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: config
+          mountPath: /opt/bitnami/nginx/conf/server_blocks
+        - name: html
+          mountPath: /opt/bitnami/nginx/html
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: nginx-demo-config
+          items:
+          - key: default.conf
+            path: default.conf
+      - name: html
+        configMap:
+          name: nginx-demo-config
+          items:
+          - key: index.html
+            path: index.html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-demo
+  namespace: default
+  labels:
+    app: nginx-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx-demo
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+---
+# OpenShift Route - exposes the service externally via the built-in ingress controller
+# No LoadBalancer needed - OpenShift creates a DNS hostname automatically
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nginx-demo
+  namespace: default
+  labels:
+    app: nginx-demo
+spec:
+  to:
+    kind: Service
+    name: nginx-demo
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

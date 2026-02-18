@@ -1,0 +1,45 @@
+# ============================================================================
+# CyPerf Agent Client - OpenShift Pod Deployment
+# ============================================================================
+# OpenShift-specific: requires privileged SCC on the cyperf-agent ServiceAccount
+# Run once after namespace creation:
+#   oc adm policy add-scc-to-user privileged -z cyperf-agent -n cyperf
+#
+# Image: templated via ${CYPERF_AGENT_IMAGE} - substituted by deploy-cyperf-openshift.sh
+# Ref: https://github.com/Keysight/cyperf/tree/main/deployment/k8s
+# ============================================================================
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cyperf-agent-client
+  namespace: cyperf
+  labels:
+    app: cyperf-agent
+    role: client
+spec:
+  serviceAccountName: cyperf-agent
+  containers:
+  - name: cyperf-agent
+    image: ${CYPERF_AGENT_IMAGE}
+    env:
+    - name: AGENT_CONTROLLER
+      value: "${CONTROLLER_PRIVATE_IP}"
+    - name: AGENT_TAGS
+      value: "role=client"
+    securityContext:
+      privileged: false
+      capabilities:
+        add:
+        - NET_ADMIN
+        - IPC_LOCK
+        - NET_RAW
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+  restartPolicy: Always
+  terminationGracePeriodSeconds: 30

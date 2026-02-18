@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudlens-config
+  namespace: default
+data:
+  # CLMS private IP - run: terraform output clms_private_ip
+  clms_ip: "REPLACE_WITH_CLMS_PRIVATE_IP"
+
+  # vPB ingress private IP - run: terraform output vpb_interfaces
+  vpb_ingress_ip: "REPLACE_WITH_VPB_INGRESS_IP"
+
+  # CloudLens project key (generate from CLMS UI after deployment)
+  # Access CLMS UI → Projects → Create Project → Copy project key
+  project_key: ""
+
+  # Deployment prefix - must match your terraform.tfvars deployment_prefix
+  deployment_prefix: "REPLACE_WITH_DEPLOYMENT_PREFIX"
+
+  # Custom tags for CloudLens sensors
+  custom_tags: "platform=openshift,training_lab=true"
